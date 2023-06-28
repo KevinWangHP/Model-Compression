@@ -27,7 +27,7 @@ parser.add_argument('--resume', '-r', action='store_true',
 parser.add_argument('--print_freq', type=int, default=100,
                     help='logs printing frequency')
 parser.add_argument('--out_dir', type=str, default='')
-parser.add_argument('--optimizer', default= 'Adam', type = str)
+parser.add_argument('--optimizer', default= 'SGD', type = str)
 parser.add_argument('--pretrained', default= True, type=bool)
 args = parser.parse_args()
 
@@ -62,6 +62,9 @@ testloader = torch.utils.data.DataLoader(
 # Model
 print('==> Building model..')
 net = resnet18()
+net.conv1 = nn.Conv2d(net.conv1.in_channels, net.conv1.out_channels, (3, 3), (1, 1), 1)
+net.maxpool = nn.Identity()  # nn.Conv2d(64, 64, 1, 1, 1)
+net.fc = nn.Linear(net.fc.in_features, 10)
 #net = torch.nn.DataParallel(net)
 if args.pretrained == True:
     checkpoint = torch.load('./checkpoint/ckpt_full.pth')
@@ -185,4 +188,5 @@ for epoch in range(start_epoch, start_epoch+200):
     train(epoch)
     scheduler.step()
     test(epoch)
+
 print(args.pretrained, args.optimizer)

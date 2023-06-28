@@ -60,14 +60,17 @@ testloader = torch.utils.data.DataLoader(
 # Model
 print('==> Building model..')
 net = resnet18()
+net.conv1 = nn.Conv2d(net.conv1.in_channels, net.conv1.out_channels, (3, 3), (1, 1), 1)
+net.maxpool = nn.Identity()  # nn.Conv2d(64, 64, 1, 1, 1)
+net.fc = nn.Linear(net.fc.in_features, 10)
 
 # Binarize
 print('==> Preparing the model for binarization')
 bconfig = BConfig(
-            activation_pre_process = BasicInputBinarizer,
-            activation_post_process = Identity,
-            weight_pre_process = XNORWeightBinarizer
-        )
+                  activation_pre_process = BasicInputBinarizer,
+                  activation_post_process = Identity,
+                  weight_pre_process = XNORWeightBinarizer
+                  )
 # first and last layer will be kept FP32
 #model = prepare_binary_model(net, bconfig, custom_config_layers_name={'conv1': BConfig(), 'fc': BConfig()})
 #print(model)
@@ -87,8 +90,8 @@ if args.resume:
     start_epoch = checkpoint['epoch']
 
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=0)
-#optimizer = optim.SGD(net.parameters(), lr = args.lr, momentum=0.9, weight_decay=0)
+# optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=0)
+optimizer = optim.SGD(net.parameters(), lr = args.lr, momentum=0.9, weight_decay=0)
 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [70, 140, 180], 0.1)
 
 # Training
