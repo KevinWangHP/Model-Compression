@@ -133,7 +133,7 @@ class XNORWeightBinarizer(BinarizerBase):
 
         if self.compute_alpha:
             alpha = self._compute_alpha(x)
-            x = SignActivation.apply(x).mul_(alpha.expand_as(x))
+            x = SignActivation.apply(x).mul_(alpha.expand_as(x))#还是没有达到加速的效果呀
         else:
             x = SignActivation.apply(x)
 

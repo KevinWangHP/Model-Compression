@@ -1,15 +1,32 @@
-s = "hello"
-s_list = list(s)
-low = 0
-high = len(s) - 1
-yuan_list = ['a', 'e', 'i', 'o', 'u']
-while low < high:
-    while low < high and s_list[low] not in yuan_list:
-        low += 1
-    while low < high and s_list[high] not in yuan_list:
-        high -= 1
-    if low < high:
-        s_list[low], s_list[high] = s_list[high], s_list[low]
-        low += 1
-        high -= 1
-print("".join(s_list))
+
+image = [[0, 0, 0], [0, 0, 0]]
+sr = 0
+sc = 0
+color = 0
+
+origin = image[sr][sc]
+m = len(image)
+n = len(image[0])
+already = [[0 for i in range(n)] for j in range(m)]
+
+
+def fill(image, sr, sc, color, already):
+    if already[sr][sc] == 1:
+        return image, already
+    already[sr][sc] = 1
+    if image[sr][sc] == origin:
+        image[sr][sc] = color
+    else:
+        return image, already
+    if sr > 0:
+        image, already = fill(image, sr - 1, sc, color, already)
+    if sc > 0:
+        image, already = fill(image, sr, sc - 1, color, already)
+    if sr < m - 1:
+        image, already = fill(image, sr + 1, sc, color, already)
+    if sc < n - 1:
+        image, already = fill(image, sr, sc + 1, color, already)
+    return image, already
+
+res, already = fill(image, sr, sc, color, already)
+print(res)

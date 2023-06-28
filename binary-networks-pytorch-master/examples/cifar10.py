@@ -7,6 +7,7 @@ import torchvision
 import torchvision.transforms as transforms
 
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 import argparse
 import time
 
@@ -17,7 +18,7 @@ from bnn.ops import  (
 from bnn import BConfig, prepare_binary_model, Identity
 from  bnn.models.resnet import resnet18
 
-from utils import AverageMeter, ProgressMeter, accuracy
+from examples.utils import AverageMeter, ProgressMeter, accuracy
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
@@ -26,7 +27,6 @@ parser.add_argument('--resume', '-r', action='store_true',
 parser.add_argument('--print_freq', type=int, default=100,
                     help='logs printing frequency')
 parser.add_argument('--out_dir', type=str, default='')
-parser.add_argument('--ckpt_name', type=str, default='ckpt_resnet18.pth')
 args = parser.parse_args()
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -48,23 +48,19 @@ transform_test = transforms.Compose([
 ])
 
 trainset = torchvision.datasets.CIFAR10(
-    root='./data', train=True, download=True, transform=transform_train)
+    root='/data/datasets/cifar10/', train=True, download=True, transform=transform_train)
 trainloader = torch.utils.data.DataLoader(
     trainset, batch_size=128, shuffle=True, num_workers=2)
 
 testset = torchvision.datasets.CIFAR10(
-    root='./data', train=False, download=True, transform=transform_test)
+    root='/data/datasets/cifar10/', train=False, download=True, transform=transform_test)
 testloader = torch.utils.data.DataLoader(
     testset, batch_size=100, shuffle=False, num_workers=2)
 
 # Model
 print('==> Building model..')
 net = resnet18()
-net.conv1 = nn.Conv2d(3, 64, (3, 3), stride=(1, 1),
-                      padding=1, bias=False)  # 首层改成3x3卷积核
-net.maxpool = nn.MaxPool2d(1, 1, 0)  # 图像太小 本来就没什么特征 所以这里通过1x1的池化核让池化层失效
-num_ftrs = net.fc.in_features  # 获取（fc）层的输入的特征数
-net.fc = nn.Linear(num_ftrs, 10)
+
 # Binarize
 print('==> Preparing the model for binarization')
 bconfig = BConfig(
@@ -73,8 +69,8 @@ bconfig = BConfig(
             weight_pre_process = XNORWeightBinarizer
         )
 # first and last layer will be kept FP32
-# model = prepare_binary_model(net, bconfig, custom_config_layers_name={'conv1': BConfig(), 'fc': BConfig()})
-print(net)
+model = prepare_binary_model(net, bconfig, custom_config_layers_name={'conv1': BConfig(), 'fc': BConfig()})
+print(model)
 
 net = net.to(device)
 if 'cuda' in device:
@@ -85,7 +81,7 @@ if args.resume:
     # Load checkpoint.
     print('==> Resuming from checkpoint..')
     assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
-    checkpoint = torch.load('./checkpoint/' + args.ckpt_name)
+    checkpoint = torch.load('./checkpoint/ckpt.pth')
     net.load_state_dict(checkpoint['net'])
     best_acc = checkpoint['acc']
     start_epoch = checkpoint['epoch']
@@ -127,10 +123,6 @@ def train(epoch):
         if batch_idx % args.print_freq == 0:
             progress.display(batch_idx)
 
-    acc = top1.avg
-    loss = losses.avg
-    epoch_time = batch_time.sum
-    print('Train acc: {}, Train loss: {}, Epoch time: {}'.format(acc, loss, epoch_time))
 
 def test(epoch):
     batch_time = AverageMeter('Time', ':6.3f')
@@ -154,9 +146,6 @@ def test(epoch):
 
             acc1, = accuracy(outputs, targets)
 
-            batch_time.update(time.time() - end)
-            end = time.time()
-
             top1.update(acc1.item(), inputs.size(0))
             losses.update(loss.item(), inputs.size(0))
 
@@ -165,8 +154,6 @@ def test(epoch):
 
     # Save checkpoint.
     acc = top1.avg
-    loss = losses.avg
-    test_time = batch_time.sum
     if acc > best_acc:
         print('Saving...')
         state = {
@@ -176,13 +163,12 @@ def test(epoch):
         }
         if not os.path.isdir('checkpoint'):
             os.mkdir('checkpoint')
-        torch.save(state, './checkpoint/' + args.ckpt_name)
+        torch.save(state, './checkpoint/ckpt.pth')
         best_acc = acc
-    print('Current acc: {}, Current loss: {}, Best acc: {}, Test time: {}'
-          .format(acc, loss, best_acc, test_time))
+    print('Current acc: {}, best acc: {}'.format(acc, best_acc))
 
 
-for epoch in range(start_epoch, start_epoch+50):
+for epoch in range(start_epoch, start_epoch+200):
     train(epoch)
     test(epoch)
 

@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 from .. import BConfig
 from .helpers import copy_paramters
-
+from .quantize import linear_biprec
 
 class Linear(nn.Linear):
     _FLOAT_MODULE = nn.Linear
@@ -18,14 +18,16 @@ class Linear(nn.Linear):
         self.activation_pre_process = bconfig.activation_pre_process()
         self.activation_post_process = bconfig.activation_post_process(self)
         self.weight_pre_process = bconfig.weight_pre_process()
-
+        self.gq = True
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         input_proc = self.activation_pre_process(input)
-        return self.activation_post_process(
-            F.linear(input_proc, self.weight_pre_process(self.weight), self.bias),
-            input
+        if self.gq == False:
+            return self.activation_post_process(
+                F.linear(input_proc, self.weight_pre_process(self.weight), self.bias),
+                input
         )
-
+        else:
+            return self.activation_post_process(linear_biprec(input_proc, self.weight_pre_process(self.weight), self.bias), input)
     @classmethod
     def from_module(cls, mod: nn.Module, bconfig: BConfig = None, update: bool = False) -> nn.Module:
         assert type(mod) == cls._FLOAT_MODULE or type(mod) == cls, 'bnn.' + cls.__name__ + \

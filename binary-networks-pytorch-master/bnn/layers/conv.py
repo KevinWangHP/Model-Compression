@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch.nn.common_types import _size_1_t, _size_2_t
 from .. import BConfig
 from .helpers import copy_paramters
-
+from .quantize import conv2d_biprec
 
 class Conv1d(nn.Conv1d):
     _FLOAT_MODULE = nn.Conv1d
@@ -86,10 +86,14 @@ class Conv2d(nn.Conv2d):
         self.activation_pre_process = bconfig.activation_pre_process()
         self.activation_post_process = bconfig.activation_post_process(self)
         self.weight_pre_process = bconfig.weight_pre_process()
+        self.gq = True
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         input_proc = self.activation_pre_process(input)
-        input_proc = self._conv_forward(input_proc, self.weight_pre_process(self.weight), bias=self.bias)
+        if self.gq == False:
+            input_proc = self._conv_forward(input_proc, self.weight_pre_process(self.weight), bias=self.bias)
+        else:
+            input_proc = conv2d_biprec(input_proc, self.weight_pre_process(self.weight), self.bias, self.stride, self.padding, self.dilation, self.groups)
 
         return self.activation_post_process(
             input_proc,
