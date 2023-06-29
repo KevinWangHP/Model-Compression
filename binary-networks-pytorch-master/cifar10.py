@@ -7,7 +7,7 @@ import torchvision
 import torchvision.transforms as transforms
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
 import argparse
 import time
 
@@ -66,10 +66,10 @@ net.conv1 = nn.Conv2d(net.conv1.in_channels, net.conv1.out_channels, (3, 3), (1,
 net.maxpool = nn.Identity()  # nn.Conv2d(64, 64, 1, 1, 1)
 net.fc = nn.Linear(net.fc.in_features, 10)
 #net = torch.nn.DataParallel(net)
-if args.pretrained == True:
-    checkpoint = torch.load('./checkpoint/ckpt_full.pth')
-    checkpoint = checkpoint['net']
-    net.load_state_dict({k.replace('module.',''):v for k,v in checkpoint.items()})
+# if args.pretrained == True:
+#     checkpoint = torch.load('./checkpoint/ckpt_full.pth')
+#     checkpoint = checkpoint['net']
+#     net.load_state_dict({k.replace('module.',''):v for k,v in checkpoint.items()})
 #checkpoint = torch.load('./checkpoint/ckpt_full.pth')
 #net.load_state_dict(checkpoint['net'])
 #net = net.module()
