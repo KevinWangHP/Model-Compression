@@ -5,9 +5,11 @@ import torch.backends.cudnn as cudnn
 
 import torchvision
 import torchvision.transforms as transforms
+from torchvision import models
+
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
 import argparse
 import time
 
@@ -17,6 +19,7 @@ from bnn.ops import  (
 )
 from bnn import BConfig, prepare_binary_model, Identity
 from  bnn.models.resnet import resnet18
+
 
 from examples.utils import AverageMeter, ProgressMeter, accuracy
 
@@ -59,7 +62,9 @@ testloader = torch.utils.data.DataLoader(
 
 # Model
 print('==> Building model..')
-net = resnet18()
+# net = resnet18()
+net = models.resnet18(pretrained=True)
+
 net.conv1 = nn.Conv2d(net.conv1.in_channels, net.conv1.out_channels, (3, 3), (1, 1), 1)
 net.maxpool = nn.Identity()  # nn.Conv2d(64, 64, 1, 1, 1)
 net.fc = nn.Linear(net.fc.in_features, 10)
@@ -73,21 +78,21 @@ bconfig = BConfig(
                   )
 # first and last layer will be kept FP32
 #model = prepare_binary_model(net, bconfig, custom_config_layers_name={'conv1': BConfig(), 'fc': BConfig()})
-#print(model)
+print(net)
 
 net = net.to(device)
 if 'cuda' in device:
     net = torch.nn.DataParallel(net)
     cudnn.benchmark = True
 
-if args.resume:
-    # Load checkpoint.
-    print('==> Resuming from checkpoint..')
-    assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
-    checkpoint = torch.load('./checkpoint/ckpt.pth')
-    net.load_state_dict(checkpoint['net'])
-    best_acc = checkpoint['acc']
-    start_epoch = checkpoint['epoch']
+# if args.resume:
+#     # Load checkpoint.
+#     print('==> Resuming from checkpoint..')
+#     assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
+#     checkpoint = torch.load('./checkpoint/ckpt.pth')
+#     net.load_state_dict(checkpoint['net'])
+#     best_acc = checkpoint['acc']
+#     start_epoch = checkpoint['epoch']
 
 criterion = nn.CrossEntropyLoss()
 # optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=0)
@@ -127,6 +132,9 @@ def train(epoch):
 
         if batch_idx % args.print_freq == 0:
             progress.display(batch_idx)
+    acc = top1.avg
+    train_loss = losses.avg
+    print('Train acc: {}, train loss:{}'.format(acc, train_loss))
 
 
 def test(epoch):
@@ -159,6 +167,7 @@ def test(epoch):
 
     # Save checkpoint.
     acc = top1.avg
+    test_loss = losses.avg
     if acc > best_acc:
         print('Saving...')
         state = {
@@ -168,9 +177,9 @@ def test(epoch):
         }
         if not os.path.isdir('checkpoint'):
             os.mkdir('checkpoint')
-        torch.save(state, './checkpoint/ckpt.pth')
+        torch.save(state, './checkpoint/ckpt_full.pth')
         best_acc = acc
-    print('Current acc: {}, best acc: {}'.format(acc, best_acc))
+    print('Current acc: {}, current loss:{}, best acc: {}'.format(acc, test_loss, best_acc))
 
 
 for epoch in range(start_epoch, start_epoch+200):

@@ -61,7 +61,7 @@ testloader = torch.utils.data.DataLoader(
 
 # Model
 print('==> Building model..')
-net = resnet18()
+net = resnet18(pretrained=True)
 net.conv1 = nn.Conv2d(net.conv1.in_channels, net.conv1.out_channels, (3, 3), (1, 1), 1)
 net.maxpool = nn.Identity()  # nn.Conv2d(64, 64, 1, 1, 1)
 net.fc = nn.Linear(net.fc.in_features, 10)
@@ -138,6 +138,9 @@ def train(epoch):
 
         if batch_idx % args.print_freq == 0:
             progress.display(batch_idx)
+    acc = top1.avg
+    train_loss = losses.avg
+    print('Train acc: {}, train loss:{}'.format(acc, train_loss))
 
 
 def test(epoch):
@@ -170,6 +173,7 @@ def test(epoch):
 
     # Save checkpoint.
     acc = top1.avg
+    test_loss = losses.avg
     if acc > best_acc:
         print('Saving...')
         state = {
@@ -181,7 +185,7 @@ def test(epoch):
             os.mkdir('checkpoint')
         torch.save(state, './checkpoint/ckpt.pth')
         best_acc = acc
-    print('Current acc: {}, best acc: {}'.format(acc, best_acc))
+    print('Current acc: {}, current loss:{}, best acc: {}'.format(acc, test_loss, best_acc))
 
 
 for epoch in range(start_epoch, start_epoch+200):
