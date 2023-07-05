@@ -1,3 +1,6 @@
+import copy
+import numpy as np
+import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -8,16 +11,32 @@ import torchvision.transforms as transforms
 from torchvision import models
 
 import os
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
 import argparse
 import time
 
-from bnn.ops import  (
+
+# 固定torch种子
+def seed_torch(seed=2023):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)  # 为了禁止hash随机化，使得实验可复现
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
+
+seed_torch()
+
+from bnn.ops import (
     BasicInputBinarizer,
     XNORWeightBinarizer
 )
 from bnn import BConfig, prepare_binary_model, Identity
-from  bnn.models.resnet import resnet18
+from bnn.models.resnet import resnet18
 
 from examples.utils import AverageMeter, ProgressMeter, accuracy
 
@@ -28,8 +47,8 @@ parser.add_argument('--resume', '-r', action='store_true',
 parser.add_argument('--print_freq', type=int, default=100,
                     help='logs printing frequency')
 parser.add_argument('--out_dir', type=str, default='')
-parser.add_argument('--optimizer', default= 'SGD', type = str)
-parser.add_argument('--pretrained', default= True, type=bool)
+parser.add_argument('--optimizer', default='SGD', type=str)
+parser.add_argument('--pretrained', default=True, type=bool)
 args = parser.parse_args()
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -53,7 +72,7 @@ transform_test = transforms.Compose([
 trainset = torchvision.datasets.CIFAR10(
     root='/data/datasets/cifar10/', train=True, download=True, transform=transform_train)
 trainloader = torch.utils.data.DataLoader(
-    trainset, batch_size=8, shuffle=True, num_workers=2)
+    trainset, batch_size=128, shuffle=True, num_workers=2)
 
 testset = torchvision.datasets.CIFAR10(
     root='/data/datasets/cifar10/', train=False, download=True, transform=transform_test)
@@ -63,49 +82,65 @@ testloader = torch.utils.data.DataLoader(
 # Model
 print('==> Building model..')
 # net = resnet18()
-net = models.resnet18(pretrained=True)
+net = models.resnet18()
 net.conv1 = nn.Conv2d(net.conv1.in_channels, net.conv1.out_channels, (3, 3), (1, 1), 1)
 net.maxpool = nn.Identity()  # nn.Conv2d(64, 64, 1, 1, 1)
 net.fc = nn.Linear(net.fc.in_features, 10)
-#net = torch.nn.DataParallel(net)
+
+# NET_FULL_PRECISION
+# net_full = resnet18()
+net_full = copy.deepcopy(net)
+net_full.conv1 = nn.Conv2d(net_full.conv1.in_channels, net_full.conv1.out_channels, (3, 3), (1, 1), 1)
+net_full.maxpool = nn.Identity()  # nn.Conv2d(64, 64, 1, 1, 1)
+net_full.fc = nn.Linear(net_full.fc.in_features, 10)
+
+# net = torch.nn.DataParallel(net)
 # if args.pretrained == True:
 #     checkpoint = torch.load('./checkpoint/ckpt_full.pth')
 #     checkpoint = checkpoint['net']
 #     net.load_state_dict({k.replace('module.',''):v for k,v in checkpoint.items()})
-#checkpoint = torch.load('./checkpoint/ckpt_full.pth')
-#net.load_state_dict(checkpoint['net'])
-#net = net.module()
+# checkpoint = torch.load('./checkpoint/ckpt_full.pth')
+# net.load_state_dict(checkpoint['net'])
+# net = net.module()
 # Binarize
 print('==> Preparing the model for binarization')
 bconfig = BConfig(
-            activation_pre_process = BasicInputBinarizer,
-            activation_post_process = Identity,
-            weight_pre_process = XNORWeightBinarizer
-        )
+    activation_pre_process=BasicInputBinarizer,
+    activation_post_process=Identity,
+    weight_pre_process=XNORWeightBinarizer
+)
 # first and last layer will be kept FP32
 model = prepare_binary_model(net, bconfig, custom_config_layers_name={'conv1': BConfig(), 'fc': BConfig()})
 print(model)
+print(net_full)
 
 net = net.to(device)
+net_full = net_full.to(device)
 if 'cuda' in device:
     net = torch.nn.DataParallel(net)
+    net_full = torch.nn.DataParallel(net_full)
     cudnn.benchmark = True
 
-if args.resume:
-    # Load checkpoint.
-    print('==> Resuming from checkpoint..')
-    assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
-    checkpoint = torch.load('./checkpoint/ckpt.pth')
-    net.load_state_dict(checkpoint['net'])
-    best_acc = checkpoint['acc']
-    start_epoch = checkpoint['epoch']
+# if args.resume:
+#     # Load checkpoint.
+#     print('==> Resuming from checkpoint..')
+#     assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
+#     checkpoint = torch.load('./checkpoint/ckpt.pth')
+#     net.load_state_dict(checkpoint['net'])
+#     best_acc = checkpoint['acc']
+#     start_epoch = checkpoint['epoch']
 
 criterion = nn.CrossEntropyLoss()
 if args.optimizer == 'Adam':
     optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=0)
+    optimizer_full = optim.Adam(net_full.parameters(), lr=args.lr, weight_decay=0)
 else:
-    optimizer = optim.SGD(net.parameters(), lr = args.lr, momentum=0.9, weight_decay=0)
+    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=0)
+    optimizer_full = optim.SGD(net_full.parameters(), lr=args.lr, momentum=0.9, weight_decay=0)
+
 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [70, 140, 180], 0.1)
+scheduler_full = torch.optim.lr_scheduler.MultiStepLR(optimizer_full, [70, 140, 180], 0.1)
+
 
 # Training
 def train(epoch):
@@ -120,20 +155,50 @@ def train(epoch):
 
     print('\nTrain Epoch: %d' % epoch)
     net.train()
+    net_full.train()
     end = time.time()
     for batch_idx, (inputs, targets) in enumerate(trainloader):
         data_time.update(time.time() - end)
         inputs, targets = inputs.to(device), targets.to(device)
+
         optimizer.zero_grad()
         outputs = net(inputs)
         loss = criterion(outputs, targets)
         loss.backward()
         optimizer.step()
 
-        acc1, = accuracy(outputs, targets)
+        optimizer_full.zero_grad()
+        outputs_full = net_full(inputs)
+        loss_full = criterion(outputs_full, targets)
+        loss_full.backward()
+        optimizer_full.step()
 
-        top1.update(acc1.item(), inputs.size(0))
-        losses.update(loss.item(), inputs.size(0))
+        grads = [param.grad for param in net.parameters()]
+        grads_full = [param.grad for param in net_full.parameters()]
+
+        import matplotlib.pyplot as plt
+
+        grads_flatten = grads[0].flatten()
+        for i in grads[1:]:
+            grads_flatten = torch.concat((grads_flatten, i.flatten()))
+        print(f'Variance:{torch.var(grads_flatten)}')
+        plt.hist(grads_flatten.cpu(), bins=1000, log=True)
+        del grads_flatten
+        plt.title("BNN")
+        plt.xlabel("Gradient")
+        plt.ylabel("rate")
+        plt.show()
+
+        grads_full_flatten = grads_full[0].flatten()
+        for j in grads_full[1:]:
+            grads_full_flatten = torch.concat((grads_full_flatten, j.flatten()))
+        print(f'Variance:{torch.var(grads_full_flatten)}')
+        plt.hist(grads_full_flatten.cpu(), bins=1000, log=True)
+        del grads_full_flatten
+        plt.title("FULL-PRECISION")
+        plt.xlabel("Gradient")
+        plt.ylabel("rate")
+        plt.show()
 
         print(net.module.conv1.bias.shape)
         print(net.module.conv1.bias.grad.shape)
@@ -151,6 +216,11 @@ def train(epoch):
         print(net.module.fc.bias.grad.shape)
         print(net.module.fc.weight.shape)
         print(net.module.fc.weight.grad.shape)
+
+        acc1, = accuracy(outputs, targets)
+
+        top1.update(acc1.item(), inputs.size(0))
+        losses.update(loss.item(), inputs.size(0))
 
         batch_time.update(time.time() - end)
         end = time.time()
@@ -207,7 +277,7 @@ def test(epoch):
     print('Current acc: {}, current loss:{}, best acc: {}'.format(acc, test_loss, best_acc))
 
 
-for epoch in range(start_epoch, start_epoch+200):
+for epoch in range(start_epoch, start_epoch + 200):
     train(epoch)
     scheduler.step()
     test(epoch)
