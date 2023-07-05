@@ -63,7 +63,7 @@ testloader = torch.utils.data.DataLoader(
 # Model
 print('==> Building model..')
 # net = resnet18()
-net = models.resnet18(pretrained=False)
+net = models.resnet18(pretrained=True)
 net.conv1 = nn.Conv2d(net.conv1.in_channels, net.conv1.out_channels, (3, 3), (1, 1), 1)
 net.maxpool = nn.Identity()  # nn.Conv2d(64, 64, 1, 1, 1)
 net.fc = nn.Linear(net.fc.in_features, 10)
@@ -134,6 +134,23 @@ def train(epoch):
 
         top1.update(acc1.item(), inputs.size(0))
         losses.update(loss.item(), inputs.size(0))
+
+        print(net.module.conv1.bias.shape)
+        print(net.module.conv1.bias.grad.shape)
+        print(net.module.conv1.weight.shape)
+        print(net.module.conv1.weight.grad.shape)
+
+        for i in [net.module.layer1, net.module.layer2,
+                  net.module.layer3, net.module.layer4]:
+            for j in range(2):
+                for k in [i[j].conv1, i[j].conv2]:
+                    print(k.weight.shape)
+                    print(k.weight.grad.shape)
+
+        print(net.module.fc.bias.shape)
+        print(net.module.fc.bias.grad.shape)
+        print(net.module.fc.weight.shape)
+        print(net.module.fc.weight.grad.shape)
 
         batch_time.update(time.time() - end)
         end = time.time()

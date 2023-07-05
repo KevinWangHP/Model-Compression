@@ -63,7 +63,7 @@ testloader = torch.utils.data.DataLoader(
 # Model
 print('==> Building model..')
 # net = resnet18()
-net = models.resnet18(pretrained=True)
+net = models.resnet18(pretrained=False)
 
 net.conv1 = nn.Conv2d(net.conv1.in_channels, net.conv1.out_channels, (3, 3), (1, 1), 1)
 net.maxpool = nn.Identity()  # nn.Conv2d(64, 64, 1, 1, 1)
