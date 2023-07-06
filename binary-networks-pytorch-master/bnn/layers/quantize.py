@@ -12,9 +12,9 @@ class QuantizationConfig:
         self.activation_num_bits = 8
         self.weight_num_bits = 8
         self.bias_num_bits = 16
-        self.backward_num_bits = 4
-        self.bweight_num_bits = 4
-        self.backward_persample = False
+        self.backward_num_bits = 8
+        self.bweight_num_bits = 8
+        self.backward_persample = True
         self.biased = False
         self.grads = None
         self.acts = None

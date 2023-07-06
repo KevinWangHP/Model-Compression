@@ -9,12 +9,13 @@ import torch.backends.cudnn as cudnn
 import torchvision
 import torchvision.transforms as transforms
 from torchvision import models
-
 import os
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
 import argparse
 import time
+import warnings
+
+warnings.filterwarnings('ignore')
+os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
 
 
 # 固定torch种子
@@ -81,18 +82,14 @@ testloader = torch.utils.data.DataLoader(
 
 # Model
 print('==> Building model..')
-# net = resnet18()
-net = models.resnet18()
+net = resnet18()
+# net = models.resnet18()
 net.conv1 = nn.Conv2d(net.conv1.in_channels, net.conv1.out_channels, (3, 3), (1, 1), 1)
 net.maxpool = nn.Identity()  # nn.Conv2d(64, 64, 1, 1, 1)
 net.fc = nn.Linear(net.fc.in_features, 10)
 
 # NET_FULL_PRECISION
-# net_full = resnet18()
 net_full = copy.deepcopy(net)
-net_full.conv1 = nn.Conv2d(net_full.conv1.in_channels, net_full.conv1.out_channels, (3, 3), (1, 1), 1)
-net_full.maxpool = nn.Identity()  # nn.Conv2d(64, 64, 1, 1, 1)
-net_full.fc = nn.Linear(net_full.fc.in_features, 10)
 
 # net = torch.nn.DataParallel(net)
 # if args.pretrained == True:
@@ -173,32 +170,33 @@ def train(epoch):
         loss_full.backward()
         optimizer_full.step()
 
-        grads = [param.grad for param in net.parameters()]
-        grads_full = [param.grad for param in net_full.parameters()]
+        # grads = [param.grad for param in net.parameters()]
+        # grads_full = [param.grad for param in net_full.parameters()]
 
-        import matplotlib.pyplot as plt
-
-        grads_flatten = grads[0].flatten()
-        for i in grads[1:]:
-            grads_flatten = torch.concat((grads_flatten, i.flatten()))
-        print(f'Variance:{torch.var(grads_flatten)}')
-        plt.hist(grads_flatten.cpu(), bins=1000, log=True)
-        del grads_flatten
-        plt.title("BNN")
-        plt.xlabel("Gradient")
-        plt.ylabel("rate")
-        plt.show()
-
-        grads_full_flatten = grads_full[0].flatten()
-        for j in grads_full[1:]:
-            grads_full_flatten = torch.concat((grads_full_flatten, j.flatten()))
-        print(f'Variance:{torch.var(grads_full_flatten)}')
-        plt.hist(grads_full_flatten.cpu(), bins=1000, log=True)
-        del grads_full_flatten
-        plt.title("FULL-PRECISION")
-        plt.xlabel("Gradient")
-        plt.ylabel("rate")
-        plt.show()
+        # import matplotlib.pyplot as plt
+        # # 梯度分布可视化
+        # grads_flatten = grads[0].flatten()
+        # for i in grads[1:]:
+        #     grads_flatten = torch.concat((grads_flatten, i.flatten()))
+        # print(f'Variance:{torch.var(grads_flatten)}')
+        # plt.hist(grads_flatten.cpu(), bins=1000, log=True)
+        # del grads_flatten
+        # plt.title("BNN")
+        # plt.xlabel("Gradient")
+        # plt.ylabel("rate")
+        # plt.show()
+        #
+        # # 全精度梯度分布可视化
+        # grads_full_flatten = grads_full[0].flatten()
+        # for j in grads_full[1:]:
+        #     grads_full_flatten = torch.concat((grads_full_flatten, j.flatten()))
+        # print(f'Variance:{torch.var(grads_full_flatten)}')
+        # plt.hist(grads_full_flatten.cpu(), bins=1000, log=True)
+        # del grads_full_flatten
+        # plt.title("FULL-PRECISION")
+        # plt.xlabel("Gradient")
+        # plt.ylabel("rate")
+        # plt.show()
 
         print(net.module.conv1.bias.shape)
         print(net.module.conv1.bias.grad.shape)
@@ -209,6 +207,7 @@ def train(epoch):
                   net.module.layer3, net.module.layer4]:
             for j in range(2):
                 for k in [i[j].conv1, i[j].conv2]:
+                    print(k.bias.shape)
                     print(k.weight.shape)
                     print(k.weight.grad.shape)
 
