@@ -18,6 +18,9 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 from image_classification.quantize import config
 from image_classification.preconditioner import init
+import warnings
+warnings.filterwarnings("ignore")
+os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
 
 try:
     from apex.parallel import DistributedDataParallel as DDP
@@ -42,47 +45,47 @@ def add_parser_arguments(parser):
 
     parser.add_argument('data', metavar='DIR',
                         help='path to dataset')
-    parser.add_argument('--dataset', type=str, default='imagenet')
+    parser.add_argument('--dataset', type=str, default='cifar10')
 
     parser.add_argument('--data-backend', metavar='BACKEND', default='pytorch',
                         choices=DATA_BACKEND_CHOICES)
 
-    parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet50',
+    parser.add_argument('--arch', '-a', metavar='ARCH', default='preact_resnet20',
                         choices=model_names,
                         help='model architecture: ' +
                         ' | '.join(model_names) +
                         ' (default: resnet50)')
 
-    parser.add_argument('--model-config', '-c', metavar='CONF', default='fanin',
+    parser.add_argument('--model-config', '-c', metavar='CONF', default='quantize',
                         choices=model_configs,
                         help='model configs: ' +
                         ' | '.join(model_configs) + '(default: classic)')
 
-    parser.add_argument('-j', '--workers', default=5, type=int, metavar='N',
+    parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 5)')
-    parser.add_argument('--epochs', default=90, type=int, metavar='N',
+    parser.add_argument('--epochs', default=200, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                         help='manual epoch number (useful on restarts)')
-    parser.add_argument('-b', '--batch-size', default=64, type=int,
+    parser.add_argument('-b', '--batch-size', default=128, type=int,
                         metavar='N', help='mini-batch size (default: 256) per gpu')
 
     parser.add_argument('--optimizer-batch-size', default=-1, type=int,
                         metavar='N', help='size of a total batch size, for simulating bigger batches')
 
-    parser.add_argument('--lr', '--learning-rate', default=0.512, type=float,
+    parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
                         metavar='LR', help='initial learning rate')
     parser.add_argument('--lr-schedule', default='cosine', type=str, metavar='SCHEDULE', choices=['step','linear','cosine'])
 
-    parser.add_argument('--warmup', default=4, type=int,
+    parser.add_argument('--warmup', default=0, type=int,
                         metavar='E', help='number of warmup epochs')
 
-    parser.add_argument('--label-smoothing', default=0.1, type=float,
+    parser.add_argument('--label-smoothing', default=0, type=float,
                         metavar='S', help='label smoothing')
     parser.add_argument('--mixup', default=0.0, type=float,
                         metavar='ALPHA', help='mixup alpha')
 
-    parser.add_argument('--momentum', default=0.875, type=float, metavar='M',
+    parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                         help='momentum')
     parser.add_argument('--weight-decay', '--wd', default=3.0517578125e-05, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
@@ -110,12 +113,12 @@ def add_parser_arguments(parser):
     parser.add_argument('--amp', action='store_true',
                         help='Run model AMP (automatic mixed precision) mode.')
 
-    parser.add_argument("--local_rank", default=0, type=int)
+    parser.add_argument("--local_rank", default=3, type=int) # choose gpu
 
     parser.add_argument('--seed', default=None, type=int,
                         help='random seed used for np and pytorch')
 
-    parser.add_argument('--gather-checkpoints', action='store_true',
+    parser.add_argument('--gather-checkpoints', action='store_false',
                         help='Gather checkpoints throughout the training')
 
     parser.add_argument('--raport-file', default='raport.json', type=str,
@@ -124,12 +127,12 @@ def add_parser_arguments(parser):
     parser.add_argument('--final-weights', default='model.pth.tar', type=str,
                         help='file in which to store final model weights')
 
-    parser.add_argument('--evaluate', action='store_true', help='evaluate checkpoint/model')
-    parser.add_argument('--training-only', action='store_true', help='do not evaluate')
+    parser.add_argument('--evaluate', action='store_false', help='evaluate checkpoint/model')
+    parser.add_argument('--training-only', action='store_false', help='do not evaluate')
 
     parser.add_argument('--no-checkpoints', action='store_false', dest='save_checkpoints')
 
-    parser.add_argument('--workspace', type=str, default='./')
+    parser.add_argument('--workspace', type=str, default='./results/test')
 
     def str2bool(v):
         if isinstance(v, bool):
@@ -150,7 +153,7 @@ def add_parser_arguments(parser):
     parser.add_argument('--biasbits', type=int, default=16, help='bias number of bits')
     parser.add_argument('--bbits', type=int, default=8, help='backward number of bits')
     parser.add_argument('--bwbits', type=int, default=8, help='backward weight number of bits')
-    parser.add_argument('--persample', type=str2bool, default=False, help='per-sample quantization of gradients')
+    parser.add_argument('--persample', type=str2bool, default=True, help='per-sample quantization of gradients')
     parser.add_argument('--hadamard', type=str2bool, default=False, help='apply Hadamard transformation on gradients')
     parser.add_argument('--biprecision', type=str2bool, default=True, help='Gradient bifurcation')
 
@@ -186,6 +189,8 @@ def main(args):
         torch.cuda.set_device(args.gpu)
         dist.init_process_group(backend='nccl', init_method='env://')
         args.world_size = torch.distributed.get_world_size()
+    else:
+        torch.cuda.set_device(args.local_rank)
 
     if args.amp and args.fp16:
         print("Please use only one of the --fp16/--amp flags")
@@ -260,6 +265,12 @@ def main(args):
             loss,
             pretrained_weights=pretrained_weights,
             cuda = True, fp16 = args.fp16)
+    # 修改模型
+    # model_and_loss.model.conv1 = nn.Conv2d(model_and_loss.model.conv1.in_channels,
+    #                                        model_and_loss.model.conv1.out_channels, (3, 3), (1, 1), 1)
+    # model_and_loss.model.maxpool = nn.Identity()  # nn.Conv2d(64, 64, 1, 1, 1)
+    # model_and_loss.model.fc = nn.Linear(model_and_loss.model.fc.in_features, 10)
+    model_and_loss.model.cuda()
 
     # Create data loaders and optimizers as needed
     if args.dataset == 'cifar10':
@@ -325,6 +336,7 @@ def main(args):
     model_and_loss.load_model_state(model_state)
 
     print('Start epoch {}'.format(args.start_epoch))
+    os.makedirs(args.workspace, exist_ok=True)
     train_loop(
         model_and_loss, optimizer,
         lr_policy,
@@ -335,14 +347,28 @@ def main(args):
         skip_training = args.evaluate, skip_validation = args.training_only,
         save_checkpoints=args.save_checkpoints and not args.evaluate, checkpoint_dir=args.workspace)
     exp_duration = time.time() - exp_start_time
+    m, s = divmod(exp_duration, 60)
+    h, m = divmod(m, 60)
+    print(f"Training total time: {h:.0f}:{m:.0f}:{s:.0f}")
     if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
         logger.end()
     print("Experiment ended")
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
+def seed_torch(seed=2023):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed) # 为了禁止hash随机化，使得实验可复现
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed) # if you are using multi-GPU.
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
 
+
+if __name__ == '__main__':
+    seed_torch()
+    parser = argparse.ArgumentParser(description='PyTorch Cifar10 Training')
     add_parser_arguments(parser)
     args = parser.parse_args()
     cudnn.benchmark = True

@@ -1,4 +1,3 @@
-import os
 import time
 import numpy as np
 import torch
@@ -7,7 +6,12 @@ from torch.autograd import Variable
 from . import logger as log
 from . import resnet as models
 from . import utils
-from .debug import dump, fast_dump, plot_bin_hist, write_errors, fast_dump_2, variance_profile, get_var, plot_weight_hist
+from .debug import dump, plot_bin_hist, fast_dump_2
+from bnn import BConfig, prepare_binary_model, Identity
+from bnn.ops import  (
+    BasicInputBinarizer,
+    XNORWeightBinarizer
+)
 
 try:
     from apex.parallel import DistributedDataParallel as DDP
@@ -38,6 +42,14 @@ class ModelAndLoss(nn.Module):
 
         if cuda:
             criterion = criterion.cuda()
+
+        bconfig = BConfig(
+            activation_pre_process=BasicInputBinarizer,
+            activation_post_process=Identity,
+            weight_pre_process=XNORWeightBinarizer
+        )
+        # first and last layer will be kept FP32
+        # net = prepare_binary_model(model, bconfig, custom_config_layers_name={'conv1': BConfig(), 'fc': BConfig()})
 
         self.model = model
         self.loss = criterion
@@ -167,8 +179,8 @@ def get_train_step(model_and_loss, optimizer, fp16, use_amp = False, batch_size_
         input_var = Variable(input)
         target_var = Variable(target)
         loss, output = model_and_loss(input_var, target_var)
-        prec1, prec5 = torch.zeros(1), torch.zeros(1) #utils.accuracy(output.data, target, topk=(1, 5))
-
+        # prec1, prec5 = torch.zeros(1), torch.zeros(1) #utils.accuracy(output.data, target, topk=(1, 5))
+        prec1, prec5 = utils.accuracy(output.data, target, topk=(1, 5))
         if torch.distributed.is_initialized():
             reduced_loss = utils.reduce_tensor(loss.data)
             #prec1 = reduce_tensor(prec1)
@@ -336,7 +348,7 @@ def train_loop(model_and_loss, optimizer, lr_scheduler, train_loader, val_loader
     if logger is not None:
         epoch_iter = logger.epoch_generator_wrapper(epoch_iter)
     for epoch in epoch_iter:
-        print('Epoch ', epoch)
+        print('\nEpoch ', epoch)
         if not skip_training:
             train(train_loader, model_and_loss, optimizer, lr_scheduler, fp16, logger, epoch, use_amp = use_amp, prof = prof, register_metrics=epoch==start_epoch, batch_size_multiplier=batch_size_multiplier)
 
@@ -362,6 +374,7 @@ def train_loop(model_and_loss, optimizer, lr_scheduler, train_loader, val_loader
 
         if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
             logger.end()
+            print(f"Best Top1: {best_prec1}")
 
     if skip_training:
         # fast_dump_2(model_and_loss, optimizer, train_loader, checkpoint_dir)

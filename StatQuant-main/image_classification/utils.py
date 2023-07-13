@@ -7,7 +7,7 @@ import torch.distributed as dist
 
 def should_backup_checkpoint(args):
     def _sbc(epoch):
-        return args.gather_checkpoints # and (epoch < 10 or epoch % 10 == 0)
+        return args.gather_checkpoints and (epoch % 100 == 0)
     return _sbc
 
 
@@ -47,10 +47,9 @@ def accuracy(output, target, topk=(1,)):
     _, pred = output.topk(maxk, 1, True, True)
     pred = pred.t()
     correct = pred.eq(target.view(1, -1).expand_as(pred))
-
     res = []
     for k in topk:
-        correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+        correct_k = correct[:k].contiguous().view(-1).float().sum(0, keepdim=True)
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
 
