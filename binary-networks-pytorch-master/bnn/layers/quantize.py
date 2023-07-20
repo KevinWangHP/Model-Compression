@@ -14,7 +14,7 @@ class QuantizationConfig:
         self.bias_num_bits = 16
         self.backward_num_bits = 8
         self.bweight_num_bits = 8
-        self.backward_persample = True
+        self.backward_persample = False
         self.biased = False
         self.grads = None
         self.acts = None

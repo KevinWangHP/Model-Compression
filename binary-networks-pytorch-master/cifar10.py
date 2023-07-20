@@ -8,9 +8,14 @@ import torchvision.transforms as transforms
 from torchvision import models
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 import argparse
 import time
+import numpy as np
+import random
+from bnn.layers.debug import dump, plot_bin_hist, fast_dump_2
+
+
 
 from bnn.ops import  (
     BasicInputBinarizer,
@@ -28,7 +33,7 @@ parser.add_argument('--resume', '-r', action='store_true',
 parser.add_argument('--print_freq', type=int, default=100,
                     help='logs printing frequency')
 parser.add_argument('--out_dir', type=str, default='')
-parser.add_argument('--optimizer', default= 'SGD', type = str)
+parser.add_argument('--optimizer', default= 'adam', type = str)
 parser.add_argument('--pretrained', default= True, type=bool)
 args = parser.parse_args()
 
@@ -58,7 +63,7 @@ trainloader = torch.utils.data.DataLoader(
 testset = torchvision.datasets.CIFAR10(
     root='/data/datasets/cifar10/', train=False, download=True, transform=transform_test)
 testloader = torch.utils.data.DataLoader(
-    testset, batch_size=100, shuffle=False, num_workers=2)
+    testset, batch_size=128, shuffle=False, num_workers=2)
 
 # Model
 print('==> Building model..')
@@ -143,6 +148,7 @@ def train(epoch):
     acc = top1.avg
     train_loss = losses.avg
     print('Train acc: {}, train loss:{}'.format(acc, train_loss))
+    torch.cuda.empty_cache()
 
 
 def test(epoch):
@@ -190,9 +196,27 @@ def test(epoch):
     print('Current acc: {}, current loss:{}, best acc: {}'.format(acc, test_loss, best_acc))
 
 
+def seed_torch(seed=2023):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed) # 为了禁止hash随机化，使得实验可复现
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed) # if you are using multi-GPU.
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
+
+
+
+seed_torch()
 for epoch in range(start_epoch, start_epoch+200):
+    if epoch % 5 == 0 or epoch < 10:
+        plot_bin_hist(net, optimizer, testloader, "visualize/",
+                      device, criterion, epoch)
     train(epoch)
     scheduler.step()
     test(epoch)
+
 
 # print(args.pretrained, args.optimizer)
