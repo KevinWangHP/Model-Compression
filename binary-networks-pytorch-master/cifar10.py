@@ -8,7 +8,7 @@ import torchvision.transforms as transforms
 from torchvision import models
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import argparse
 import time
 import numpy as np

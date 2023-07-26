@@ -378,11 +378,12 @@ def plot_bin_hist(net, optimizer, val_loader, dirname, device, criterion, epoch)
         g = prec.forward()
 
         fig, ax = plt.subplots(figsize=(2.5, 2.5))
-        ax.hist(g.cpu().numpy().ravel(), bins=2**config.backward_num_bits-1, range=[0, 255])
+        ax.hist(g.cpu().numpy().ravel(), bins=2**config.backward_num_bits-1,
+                range=[0, 2**config.backward_num_bits-1])
         ax.set_yscale('log')
         ax.set_ylim([1, 1e6])
-        ax.set_xlim([0, 255])
-        ax.set_xticks([0, 255])
+        ax.set_xlim([0, 2**config.backward_num_bits-1])
+        ax.set_xticks([0, 2**config.backward_num_bits-1])
         l, b, w, h = ax.get_position().bounds
         ax.set_position([l + 0.05 * w, b, 0.95 * w, h])
         fig.savefig(dirname + '/{}_hist_epoch'.format(name) + f'{epoch:>03}' + '.png')
@@ -416,7 +417,7 @@ def plot_bin_hist(net, optimizer, val_loader, dirname, device, criterion, epoch)
         plot_each(ScalarPreconditionerAct, lambda x: ScalarPreconditionerAct(x, config.backward_num_bits), 'PTQ', g)
     # plot_each(BlockwiseHouseholderPreconditioner, lambda x: BlockwiseHouseholderPreconditioner(x, config.backward_num_bits), 'BHQ', g)
 
-    # 处理
+    # 后处理，清理缓存
     plt.close()
     del inputs, targets, outputs, loss, data_iter
     config.grads = None

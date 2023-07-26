@@ -49,7 +49,7 @@ def draw(filename, content):
     elif content == "loss":
         plt.title("Loss")
         plt.plot(res[2], label="Train_"+filename)
-        plt.plot(res[3], label="Train_"+filename)
+        plt.plot(res[3], label="Test_"+filename)
     elif content == "variance":
         plt.title("Variance")
         plt.plot([i[0] for i in res[4]], [math.log10(i[1]) for i in res[4]], label=filename)
@@ -57,15 +57,17 @@ def draw(filename, content):
         plt.title("Best Accuracy")
         plt.xlabel('Accuracy', fontsize=14)
         plt.xlabel('Bit', fontsize=14)
-        plt.xlim(1, 16)
+        plt.xlim(-1, 10)
         plt.ylim(0, 100)
         plt.scatter(int(filename.split("_")[-1].split("bit")[0]), res[5], s=200)
 
+def draw_curve(curve_name):
+    draw("PSQ_visualize_8bit", curve_name)
+    draw("PSQ_visualize_4bit", curve_name)
+    draw("PSQ_visualize_2bit", curve_name)
+    draw("PSQ_visualize_1bit", curve_name)
 
-draw("PSQ_visualize_8bit", "acc")
-draw("PSQ_visualize_4bit", "acc")
-draw("PSQ_visualize_2bit", "acc")
-draw("PSQ_visualize_1bit", "acc")
+draw_curve("variance")
 plt.legend(loc="best")
 plt.show()
 
